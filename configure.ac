@@ -40,6 +40,7 @@ GTK_REQ=2.18.0
 GNOME_REQ=2.0.0
 GNOMEUI_REQ=2.4.0
 GNOMEVFS_REQ=2.0.0
+GIO_REQ=2.0
 GNOME_KEYRING_REQ=2.22
 UNIQUE_REQ=0.9.3
 PYTHON_REQ=2.5
@@ -53,6 +54,7 @@ AC_SUBST(GTK_REQ)
 AC_SUBST(GNOME_REQ)
 AC_SUBST(GNOMEUI_REQ)
 AC_SUBST(GNOMEVFS_REQ)
+AC_SUBST(GIO_REQ)
 AC_SUBST(GNOME_KEYRING_REQ)
 AC_SUBST(UNIQUE_REQ)
 AC_SUBST(PYTHON_REQ)
@@ -86,6 +88,9 @@ PKG_CHECK_MODULES([GNOMEUI], [libgnomeui-2.0 >= ${GNOMEUI_REQ}])
 
 dnl Check for gnome-vfs
 PKG_CHECK_MODULES([GNOMEVFS], [gnome-vfs-2.0 >= ${GNOMEVFS_REQ}], have_gnomevfs=yes, have_gnomevfs=no)
+
+dnl Check for gio
+PKG_CHECK_MODULES([GIO], [gio-2.0 >= ${GIO_REQ}], have_gio=yes, have_gio=no)
 
 dnl Check for gnome-keyring
 PKG_CHECK_MODULES(GNOME_KEYRING, [gnome-keyring-1 >= ${GNOME_KEYRING_REQ}])
