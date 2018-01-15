@@ -212,7 +212,6 @@ static void xml_start(GMarkupParseContext *context,
                                              G_MARKUP_COLLECT_STRING, "use", &param1,
                                              G_MARKUP_COLLECT_INVALID))
                 xml_adv_profile.case_conversion = atoi(param1);
-                else
             break;
 
         case XML_GNOMECOMMANDER_ADVANCEDRENAMETOOL_PROFILE_TRIMBLANKS:
