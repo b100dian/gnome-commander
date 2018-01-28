@@ -22,8 +22,7 @@
 #include <config.h>
 #include <glib.h>
 #include <glib/gstdio.h>
-#include <libgnomevfs/gnome-vfs-volume.h>
-#include <libgnomevfs/gnome-vfs-volume-monitor.h>
+#include <gio/gio.h>
 
 #include <fstream>
 #include <algorithm>
@@ -187,7 +186,7 @@ static void on_filter_hide_unknown_changed()
     gboolean filter;
 
     filter = g_settings_get_boolean (gnome_cmd_data.options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_UNKNOWN);
-    gnome_cmd_data.options.filter.file_types[GNOME_VFS_FILE_TYPE_UNKNOWN] = filter;
+    gnome_cmd_data.options.filter.file_types[G_FILE_TYPE_UNKNOWN] = filter;
 
     main_win->update_view();
 }
@@ -197,7 +196,7 @@ static void on_filter_hide_regular_changed ()
     gboolean filter;
 
     filter = g_settings_get_boolean (gnome_cmd_data.options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_REGULAR);
-    gnome_cmd_data.options.filter.file_types[GNOME_VFS_FILE_TYPE_REGULAR] = filter;
+    gnome_cmd_data.options.filter.file_types[G_FILE_TYPE_REGULAR] = filter;
 
     main_win->update_view();
 }
@@ -207,47 +206,17 @@ static void on_filter_hide_directory_changed ()
     gboolean filter;
 
     filter = g_settings_get_boolean (gnome_cmd_data.options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_DIRECTORY);
-    gnome_cmd_data.options.filter.file_types[GNOME_VFS_FILE_TYPE_DIRECTORY] = filter;
+    gnome_cmd_data.options.filter.file_types[G_FILE_TYPE_DIRECTORY] = filter;
 
     main_win->update_view();
 }
 
-static void on_filter_hide_fifo_changed ()
+static void on_filter_hide_special_changed ()
 {
     gboolean filter;
 
-    filter = g_settings_get_boolean (gnome_cmd_data.options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_FIFO);
-    gnome_cmd_data.options.filter.file_types[GNOME_VFS_FILE_TYPE_FIFO] = filter;
-
-    main_win->update_view();
-}
-
-static void on_filter_hide_socket_changed ()
-{
-    gboolean filter;
-
-    filter = g_settings_get_boolean (gnome_cmd_data.options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SOCKET);
-    gnome_cmd_data.options.filter.file_types[GNOME_VFS_FILE_TYPE_SOCKET] = filter;
-
-    main_win->update_view();
-}
-
-static void on_filter_hide_character_device_changed ()
-{
-    gboolean filter;
-
-    filter = g_settings_get_boolean (gnome_cmd_data.options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_CHARACTER_DEVICE);
-    gnome_cmd_data.options.filter.file_types[GNOME_VFS_FILE_TYPE_CHARACTER_DEVICE] = filter;
-
-    main_win->update_view();
-}
-
-static void on_filter_hide_block_device_changed ()
-{
-    gboolean filter;
-
-    filter = g_settings_get_boolean (gnome_cmd_data.options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_BLOCK_DEVICE);
-    gnome_cmd_data.options.filter.file_types[GNOME_VFS_FILE_TYPE_BLOCK_DEVICE] = filter;
+    filter = g_settings_get_boolean (gnome_cmd_data.options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SPECIAL);
+    gnome_cmd_data.options.filter.file_types[G_FILE_TYPE_SPECIAL] = filter;
 
     main_win->update_view();
 }
@@ -257,7 +226,7 @@ static void on_filter_hide_symbolic_link_changed ()
     gboolean filter;
 
     filter = g_settings_get_boolean (gnome_cmd_data.options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SYMBOLIC_LINK);
-    gnome_cmd_data.options.filter.file_types[GNOME_VFS_FILE_TYPE_SYMBOLIC_LINK] = filter;
+    gnome_cmd_data.options.filter.file_types[G_FILE_TYPE_SYMBOLIC_LINK] = filter;
 
     main_win->update_view();
 }
@@ -955,8 +924,8 @@ static void gcmd_connect_gsettings_signals(GcmdSettings *gs)
                       NULL);
 
     g_signal_connect (gs->filter,
-                      "changed::hide-fifo",
-                      G_CALLBACK (on_filter_hide_fifo_changed),
+                      "changed::hide-special",
+                      G_CALLBACK (on_filter_hide_special_changed),
                       NULL);
 
     g_signal_connect (gs->filter,
@@ -1883,7 +1852,7 @@ static gboolean load_connections (const gchar *fname)
                             break;
                         }
 
-                        gchar *alias = gnome_vfs_unescape_string (a[1].c_str(), NULL);
+                        gchar *alias = g_uri_unescape_string (a[1].c_str(), NULL);
 
                         if (gnome_cmd_data.priv->con_list->has_alias(alias))
                         {
@@ -1913,7 +1882,7 @@ static gboolean load_connections (const gchar *fname)
                         gint ret = sscanf (line, "B: %256s %256s\n", name, new_path);
 
                         if (ret == 2)
-                            gnome_cmd_con_add_bookmark (GNOME_CMD_CON (server), gnome_vfs_unescape_string (name, NULL), gnome_vfs_unescape_string (new_path, NULL));
+                            gnome_cmd_con_add_bookmark (GNOME_CMD_CON (server), g_uri_unescape_string (name, NULL), g_uri_unescape_string (new_path, NULL));
                     }
                     break;
 
@@ -1941,43 +1910,17 @@ static gboolean load_connections (const gchar *fname)
     return fd!=NULL && g_list_length (gnome_cmd_con_list_get_all_remote (gnome_cmd_data.priv->con_list))>prev_ftp_cons_no;
 }
 
-
-inline gboolean vfs_is_uri_local (const char *uri)
+inline void remove_mount (GMount *mount)
 {
-    GnomeVFSURI *pURI = gnome_vfs_uri_new (uri);
-
-    if (!pURI)
-        return FALSE;
-
-    gboolean b = gnome_vfs_uri_is_local (pURI);
-    gnome_vfs_uri_unref (pURI);
-
-    // make sure this is actually a local path (gnome treats "burn://" as local too, and we don't want that)
-    if (g_ascii_strncasecmp (uri, "file:/", 6)!=0)
-        b = FALSE;
-
-    DEBUG('m',"uri (%s) is %slocal\n", uri, b?"":"NOT ");
-
-    return b;
-}
-
-
-inline void remove_vfs_volume (GnomeVFSVolume *volume)
-{
-    char *path, *uri, *localpath;
-
-    if (!gnome_vfs_volume_is_user_visible (volume))
-        return;
-
-    uri = gnome_vfs_volume_get_activation_uri (volume);
-    if (!vfs_is_uri_local (uri))
-    {
-        g_free (uri);
-        return;
+    char *path = NULL, *uri, *localpath;
+    GDrive* drive = g_mount_get_drive (mount);
+    if (drive) {
+        path = g_drive_get_name (drive);
+        g_object_unref (drive);
     }
 
-    path = gnome_vfs_volume_get_device_path (volume);
-    localpath = gnome_vfs_get_local_path_from_uri (uri);
+    GFile *file = g_mount_get_default_location (volume);
+    localpath = g_file_get_path (file);
 
     for (GList *i = gnome_cmd_con_list_get_all_dev (gnome_cmd_data.priv->con_list); i; i = i->next)
     {
@@ -1990,7 +1933,7 @@ inline void remove_vfs_volume (GnomeVFSVolume *volume)
             if ((strcmp(device_fn, path)==0) && (strcmp(mountp, localpath)==0))
             {
                 DEBUG('m',"Remove Volume:\ndevice_fn = %s\tmountp = %s\n",
-                device_fn,mountp);
+                   device_fn,mountp);
                 gnome_cmd_data.priv->con_list->remove(device);
                 break;
             }
@@ -2000,6 +1943,7 @@ inline void remove_vfs_volume (GnomeVFSVolume *volume)
     g_free (path);
     g_free (uri);
     g_free (localpath);
+    g_object_unref(file);
 }
 
 
@@ -2013,7 +1957,7 @@ inline gboolean device_mount_point_exists (GnomeCmdConList *list, const gchar *m
         if (device && !gnome_cmd_con_device_get_autovol (device))
         {
             gchar *mountp = g_strescape (gnome_cmd_con_device_get_mountp (device), NULL);
-            gchar *mountp2= gnome_vfs_unescape_string (mountp, NULL);
+            gchar *mountp2= g_uri_unescape_string (mountp, NULL);
 
             rc = strcmp(mountp2, mountpoint)==0;
 
@@ -2029,39 +1973,43 @@ inline gboolean device_mount_point_exists (GnomeCmdConList *list, const gchar *m
 }
 
 
-static void add_vfs_volume (GnomeVFSVolume *volume)
+static void add_mount (GMount *mount)
 {
-    if (!gnome_vfs_volume_is_user_visible (volume))
-        return;
+    GFile *file = g_mount_get_default_location (volume);
 
-    char *uri = gnome_vfs_volume_get_activation_uri (volume);
-
-    if (!vfs_is_uri_local (uri))
-    {
-        g_free (uri);
+    if (!g_file_is_native(file)) {
+        g_object_unref(file);
         return;
     }
 
-    char *path = gnome_vfs_volume_get_device_path (volume);
-    char *icon = gnome_vfs_volume_get_icon (volume);
-    char *name = gnome_vfs_volume_get_display_name (volume);
-    GnomeVFSDrive *drive = gnome_vfs_volume_get_drive (volume);
+    char *uri = g_file_get_uri();
+    GIcon *icon = g_mount_get_icon (mount);
+    char *name = g_mount_get_name (mount);
+    char *device = NULL;
+    
+    GDrive* drive = g_mount_get_drive(mount);
+    if (drive) {
+        device = g_drive_get_name(drive);
+        g_object_unref(drive);
+    }
 
     // Try to load the icon, using current theme
     const gchar *iconpath = NULL;
     GtkIconTheme *icontheme = gtk_icon_theme_get_default();
     if (icontheme)
     {
-        GtkIconInfo *iconinfo = gtk_icon_theme_lookup_icon (icontheme, icon, 16, GTK_ICON_LOOKUP_USE_BUILTIN);
-        // This returned string should not be free, see gtk documentation
+        GtkIconInfo *iconinfo = gtk_icon_theme_lookup_by_gicon (icontheme, icon, 16, GTK_ICON_LOOKUP_USE_BUILTIN);
+        // This returned string should not be freed, see gtk documentation
         if (iconinfo)
             iconpath = gtk_icon_info_get_filename (iconinfo);
+        // TODO Vlad see if this invalidates incopath too
+        gtk_icon_info_free(inconinfo);
     }
 
-    char *localpath = gnome_vfs_get_local_path_from_uri (uri);
+    char *localpath = g_file_get_path (file);
 
     DEBUG('m',"name = %s\n", name);
-    DEBUG('m',"path = %s\n", path);
+    DEBUG('m',"drive = %s\n", drive);
     DEBUG('m',"uri = %s\n", uri);
     DEBUG('m',"local = %s\n", localpath);
     DEBUG('m',"icon = %s (full path = %s)\n", icon, iconpath);
@@ -2069,7 +2017,7 @@ static void add_vfs_volume (GnomeVFSVolume *volume)
     // Don't create a new device connect if one already exists. This can happen if the user manually added the same device in "Options|Devices" menu
     if (!device_mount_point_exists (gnome_cmd_data.priv->con_list, localpath))
     {
-        GnomeCmdConDevice *ConDev = gnome_cmd_con_device_new (name, path?path:NULL, localpath, iconpath);
+        GnomeCmdConDevice *ConDev = gnome_cmd_con_device_new (name, drive?drive:NULL, localpath, iconpath);
         gnome_cmd_con_device_set_autovol (ConDev, TRUE);
         gnome_cmd_con_device_set_vfs_volume (ConDev, volume);
         gnome_cmd_data.priv->con_list->add(ConDev);
@@ -2077,111 +2025,46 @@ static void add_vfs_volume (GnomeVFSVolume *volume)
     else
         DEBUG('m', "Device for mountpoint(%s) already exists. AutoVolume not added\n", localpath);
 
-    g_free (path);
+    g_free (drive);
     g_free (uri);
     g_free (icon);
     g_free (name);
     g_free (localpath);
 
-    gnome_vfs_drive_unref (drive);
+    g_object_unref(file);
 }
 
-#if 0
-inline void add_vfs_drive (GnomeVFSDrive *drive)
+static void mount_added (GVolumeMonitor *volume_monitor, GMount *mount)
 {
-    if (!gnome_vfs_drive_is_user_visible (drive))
-        return;
+    add_mount (mount);
+}
 
-    char *uri = gnome_vfs_drive_get_activation_uri (drive);
 
-    if (!vfs_is_uri_local (uri))
+static void mount_removed (GVolumeMonitor *volume_monitor, GMount *mount)
+{
+    remove_mount (mount);
+}
+
+inline void set_volume_mount_monitor ()
+{
+    GVolumeMonitor *monitor = g_volume_monitor_get();
+
+    g_signal_connect (monitor, "mount-added", G_CALLBACK (mount_added), NULL);
+    g_signal_connect (monitor, "mount-removed", G_CALLBACK (mount_removed), NULL);
+}
+
+
+static void load_gio_auto_devices ()
+{
+    GVolumeMonitor *monitor = g_volume_monitor_get();
+    GList *mounts = g_volume_monitor_get_mounts (monitor);
+
+    for (GList *l = mounts; l; l = l->next)
     {
-        g_free (uri);
-        return;
+        add_mount ((GMount *) l->data);
+        g_object_unnref ((GMount *) l->data);
     }
-
-    char *path = gnome_vfs_drive_get_device_path (drive);
-    char *icon = gnome_vfs_drive_get_icon (drive);
-    char *name = gnome_vfs_drive_get_display_name (drive);
-    GnomeVFSVolume *volume = gnome_vfs_drive_get_mounted_volume (drive);
-
-    char *localpath = gnome_vfs_get_local_path_from_uri (uri);
-
-    DEBUG('m',"name = %s\tpath = %s\turi = %s\tlocal = %s\n",name,path,uri,localpath);
-
-    GnomeCmdConDevice *ConDev = gnome_cmd_con_device_new (name, path, localpath, icon);
-
-    gnome_cmd_con_device_set_autovol (ConDev, TRUE);
-
-    gnome_cmd_data.priv->con_list->add(ConDev);
-
-    g_free (path);
-    g_free (uri);
-    g_free (icon);
-    g_free (name);
-    g_free (localpath);
-
-    gnome_vfs_volume_unref (volume);
-}
-#endif
-
-static void volume_mounted (GnomeVFSVolumeMonitor *volume_monitor, GnomeVFSVolume *volume)
-{
-    add_vfs_volume (volume);
-}
-
-
-static void volume_unmounted (GnomeVFSVolumeMonitor *volume_monitor, GnomeVFSVolume *volume)
-{
-    remove_vfs_volume (volume);
-}
-
-#if 0
-static void drive_connected (GnomeVFSVolumeMonitor *volume_monitor, GnomeVFSDrive *drive)
-{
-    add_vfs_drive (drive);
-}
-
-static void drive_disconnected (GnomeVFSVolumeMonitor *volume_monitor, GnomeVFSDrive *drive)
-{
-    // TODO: Remove from Drives combobox
-}
-#endif
-
-inline void set_vfs_volume_monitor ()
-{
-    GnomeVFSVolumeMonitor *monitor = gnome_vfs_get_volume_monitor ();
-
-    g_signal_connect (monitor, "volume-mounted", G_CALLBACK (volume_mounted), NULL);
-    g_signal_connect (monitor, "volume-unmounted", G_CALLBACK (volume_unmounted), NULL);
-#if 0
-    g_signal_connect (monitor, "drive-connected", G_CALLBACK (drive_connected), NULL);
-    g_signal_connect (monitor, "drive-disconnected", G_CALLBACK (drive_disconnected), NULL);
-#endif
-}
-
-
-static void load_vfs_auto_devices ()
-{
-    GnomeVFSVolumeMonitor *monitor = gnome_vfs_get_volume_monitor ();
-    GList *volumes = gnome_vfs_volume_monitor_get_mounted_volumes (monitor);
-
-    for (GList *l = volumes; l; l = l->next)
-    {
-        add_vfs_volume ((GnomeVFSVolume *) l->data);
-        gnome_vfs_volume_unref ((GnomeVFSVolume *) l->data);
-    }
-    g_list_free (volumes);
-
-#if 0
-    GList *drives = gnome_vfs_volume_monitor_get_connected_drives (monitor);
-    for (GList *l = drives; l; l = l->next)
-    {
-        add_vfs_drive (l->data);
-        gnome_vfs_drive_unref (l->data);
-    }
-    g_list_free (drives);
-#endif
+    g_list_free (mounts);
 }
 
 
@@ -2231,86 +2114,9 @@ static inline void load_devices (const gchar *fname)
         g_free(icon_path);
     }
 
-    load_vfs_auto_devices ();
+    load_gio_auto_devices ();
 
     g_free (path);
-}
-
-/**
- * This function reads the given file and sets up additional devices.
- *
- * @note Beginning with gcmd-v1.6 GKeyFile is used for storing and
- * loading configuration files. For compatibility reasons, this
- * functions tries to load devices from the given file
- * with the old format prior to gcmd-v1.6. Therefore it checks if the
- * very first letter in fname is alphanumeric. If "yes", the given file
- * has a pre-v1.6 format and the file is loaded as in gcmd-v1.4. Also, a
- * backup configuration is stored in @c devices.deprecated in the old file
- * format. If "no", then nothing happens and FALSE is returned.
- *
- * @note In later versions of gcmd (later than v1.6), this function
- * might be removed, because when saving the configuration in @link
- * save_device() @endlink, GKeyFile is used and the old file
- * format isn't used anymore.
- *
- * @returns FALSE if the very first letter of the given file is not
- * alphanumeric and TRUE if it is alphanumeric.
- */
-static gboolean load_devices_old (const gchar *fname)
-{
-    gchar *path = config_dir ?
-        g_build_filename (config_dir, fname, NULL) :
-        g_build_filename (g_get_home_dir (), "." PACKAGE, fname, NULL);
-
-    ifstream f(path);
-    string line;
-    int i = 0;
-
-    //Device file does not exist
-    if(f.fail())
-    {
-        g_free (path);
-        return FALSE;
-    }
-
-    while (getline(f,line))
-    {
-        /* Is the file using the new storage format? If yes, stop here
-         * and return FALSE, i.e. old file format is not used*/
-        gchar **a = g_strsplit_set (line.c_str()," ",-1);
-        if (i == 0)
-        {
-            if (!isalnum(a[0][0]))
-            {
-                g_strfreev (a);
-                g_free (path);
-                return FALSE;
-            }
-            i++;
-        }
-
-        if (g_strv_length (a) == 4)
-        {
-            gchar *alias  = gnome_vfs_unescape_string (a[0], NULL);
-            gchar *device_fn  = gnome_vfs_unescape_string (a[1], NULL);
-            gchar *mountp  = gnome_vfs_unescape_string (a[2], NULL);
-            gchar *icon_path  = gnome_vfs_unescape_string (a[3], NULL);
-
-            gnome_cmd_data.priv->con_list->add (gnome_cmd_con_device_new (alias, device_fn, mountp, icon_path));
-
-            g_free (alias);
-            g_free (device_fn);
-            g_free (mountp);
-            g_free (icon_path);
-        }
-    }
-
-    g_free (path);
-
-    load_vfs_auto_devices ();
-    save_devices_old ("devices.deprecated");
-    save_devices ("devices");
-    return TRUE;
 }
 
 
@@ -2377,95 +2183,6 @@ static void load_fav_apps (const gchar *fname)
     g_free(path);
     g_strfreev(groups);
     g_key_file_free(keyfile);
-}
-
-/**
- * This function reads the given file and sets up favourite applications
- * by filling gnome_cmd_data.options.fav_apps.
- *
- * @note Beginning with gcmd-v1.6 GKeyFile is used for storing and
- * loading configuration files. For compatibility reasons, this
- * functions tries to load favourite applications from the given file
- * with the old format prior to gcmd-v1.6. Therefore it checks if the
- * very first letter in fname is alphanumeric. If yes, the given file
- * has a pre-v1.6 format and the file is loaded as in gcmd-v1.4. Also, a
- * backup configuration is stored in @c fav-apps.deprecated in the old file
- * format. If the result is no, then nothing happens and FALSE is
- * returned.
- *
- * @note In later versions of gcmd (later than v1.6), this function
- * might be removed, because when saving the configuration in @link
- * save_fav_apps() @endlink, GKeyFile is used and the old file
- * format isn't used anymore.
- *
- * @returns FALSE if the very first letter of the given file is not
- * alphanumeric and TRUE if it is alphanumeric.
- */
-static gboolean load_fav_apps_old (const gchar *fname)
-{
-    gnome_cmd_data.options.fav_apps = NULL;
-    gchar *path = config_dir ? g_build_filename (config_dir, fname, NULL) : g_build_filename (g_get_home_dir (), "." PACKAGE, fname, NULL);
-
-    ifstream f(path);
-    string line;
-    int i = 0;
-
-    //Device file does not exist
-    if(f.fail())
-    {
-        g_free (path);
-        return FALSE;
-    }
-
-    while (getline(f,line))
-    {
-        /* Is the file using the new storage format? If yes, stop here
-         * and return FALSE, i.e. old file format is not used */
-        gchar **a = g_strsplit_set (line.c_str()," \t",-1);
-        if (i == 0)
-        {
-            if (!isalnum(a[0][0]))
-            {
-                g_strfreev (a);
-                g_free (path);
-                return FALSE;
-            }
-            i++;
-        }
-
-        if (g_strv_length (a)==8)
-        {
-            guint target, handles_uris, handles_multiple, requires_terminal;
-
-            if (string2uint (a[3], target) &&
-                string2uint (a[5], handles_uris) &&
-                string2uint (a[6], handles_multiple) &&
-                string2uint (a[7], requires_terminal))
-            {
-                gchar *name      = gnome_vfs_unescape_string (a[0], NULL);
-                gchar *cmd       = gnome_vfs_unescape_string (a[1], NULL);
-                gchar *icon_path = gnome_vfs_unescape_string (a[2], NULL);
-                gchar *pattern   = gnome_vfs_unescape_string (a[4], NULL);
-
-                gnome_cmd_data.options.fav_apps = g_list_append (
-                    gnome_cmd_data.options.fav_apps,
-                    gnome_cmd_app_new_with_values (
-                        name, cmd, icon_path, (AppTarget) target, pattern, handles_uris, handles_multiple, requires_terminal));
-
-                g_free (name);
-                g_free (cmd);
-                g_free (icon_path);
-                g_free (pattern);
-            }
-        }
-
-        g_strfreev (a);
-    }
-
-    g_free (path);
-    save_fav_apps_old ("fav-apps.deprecated");
-    save_fav_apps ("fav-apps");
-    return TRUE;
 }
 
 #if defined (__GNUC__)
@@ -2737,476 +2454,6 @@ void GnomeCmdData::free()
 void GnomeCmdData::gsettings_init()
 {
     options.gcmd_settings = gcmd_settings_new();
-}
-
-/**
- * This method converts user settings from gcmds old config files, created via gnome config to
- * GSettings. Therefore, it first looks for those files in question and then converts the data.
- * This function should to be deleted in gcmd > 1.6
- */
-void GnomeCmdData::migrate_all_data_to_gsettings()
-{
-    guint temp_value;
-    gchar *package_config_path = gnome_config_get_real_path(PACKAGE);
-
-    ///////////////////////////////////////////////////////////////////////
-    // Data migration from .gnome2/gnome-commander, created by gnome_config
-    ///////////////////////////////////////////////////////////////////////
-    FILE *fd = fopen (package_config_path, "r");
-    if (fd)
-    {
-        // size_disp_mode
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/size_disp_mode", GNOME_CMD_SIZE_DISP_MODE_POWERED),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_SIZE_DISP_MODE);
-        // perm_disp_mode
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/perm_disp_mode", GNOME_CMD_PERM_DISP_MODE_TEXT),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_PERM_DISP_MODE);
-        // layout
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/layout", GNOME_CMD_LAYOUT_MIME_ICONS),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_GRAPHICAL_LAYOUT_MODE);
-        //list-row-height
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/list_row_height", 16),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_LIST_ROW_HEIGHT);
-        //date_disp_mode
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/options/date_disp_mode", "%x %R"),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_DATE_DISP_FORMAT);
-        //show_unknown
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/show_unknown", FALSE) ? 1 : 0,
-                                                        options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_UNKNOWN);
-        //show_regular
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/show_regular", FALSE) ? 1 : 0,
-                                                        options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_REGULAR);
-        //show_directory
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/show_directory", FALSE) ? 1 : 0,
-                                                        options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_DIRECTORY);
-        //show_fifo
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/show_fifo", FALSE) ? 1 : 0,
-                                                        options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_FIFO);
-        //show_socket
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/show_socket", FALSE) ? 1 : 0,
-                                                        options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SOCKET);
-        //show_char_device
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/show_char_device", FALSE) ? 1 : 0,
-                                                        options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_CHARACTER_DEVICE);
-        //show_block_device
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/show_block_device", FALSE) ? 1 : 0,
-                                                        options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_BLOCK_DEVICE);
-        //show_symbolic_link
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/show_symbolic_link", FALSE) ? 1 : 0,
-                                                        options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SYMBOLIC_LINK);
-        //hidden_filter
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/hidden_filter", FALSE) ? 1 : 0,
-                                                        options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_DOTFILE);
-        //hidden_filter
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/backup_filter", FALSE) ? 1 : 0,
-                                                        options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_BACKUP);
-        //backup_pattern
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/defaults/backup_pattern", "*~;*.bak"),
-                                                        options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_BACKUP_PATTERN);
-        //list_font
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/options/list_font", "DejaVu Sans Mono 8"),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_LIST_FONT);
-        //ext_disp_mode
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/ext_disp_mode", GNOME_CMD_EXT_DISP_BOTH),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_EXT_DISP_MODE);
-        //left_mouse_button_mode
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/left_mouse_button_mode", LEFT_BUTTON_OPENS_WITH_DOUBLE_CLICK),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_CLICKS_TO_OPEN_ITEM);
-        //left_mouse_button_unselects
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/left_mouse_button_unselects", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_LEFT_MOUSE_BUTTON_UNSELECTS);
-        //right_mouse_button_mode
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/right_mouse_button_mode", RIGHT_BUTTON_POPUPS_MENU),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_RIGHT_MOUSE_BUTTON_MODE);
-        //icon_size
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/icon_size", 16),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_ICON_SIZE);
-        //dev-icon_size
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/dev_icon_size", 16),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_DEV_ICON_SIZE);
-        //icon_scale_quality
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/icon_scale_quality", GDK_INTERP_HYPER),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_ICON_SCALE_QUALITY);
-        //theme_icon_dir
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/options/theme_icon_dir", "/usr/local/share/pixmaps/gnome-commander/mime-icons"),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_MIME_ICON_DIR);
-        //cmdline_history_length
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/cmdline_history_length", 16),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_CMDLINE_HISTORY_LENGTH);
-        //middle_mouse_button_mode
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/middle_mouse_button_mode", MIDDLE_BUTTON_GOES_UP_DIR),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_MIDDLE_MOUSE_BUTTON_MODE);
-        //list_orientation
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/list_orientation", FALSE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_HORIZONTAL_ORIENTATION);
-        //conbuttons_visibility
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/conbuttons_visibility", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_SHOW_DEVBUTTONS);
-        //con_list_visibility
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/con_list_visibility", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_SHOW_DEVLIST);
-        //cmdline_visibility
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/cmdline_visibility", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_SHOW_CMDLINE);
-        //toolbar_visibility
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/programs/toolbar_visibility", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_SHOW_TOOLBAR);
-        //buttonbar_visibility
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/programs/buttonbar_visibility", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_SHOW_BUTTONBAR);
-        //gui_update_rate
-        temp_value = gnome_cmd_data_get_int ("/options/gui_update_rate", 100);
-        if (temp_value < MIN_GUI_UPDATE_RATE)
-            temp_value = MIN_GUI_UPDATE_RATE;
-        if (temp_value > MAX_GUI_UPDATE_RATE)
-            temp_value = MAX_GUI_UPDATE_RATE;
-        migrate_data_int_value_into_gsettings(temp_value, options.gcmd_settings->general, GCMD_SETTINGS_GUI_UPDATE_RATE);
-        //symlink_prefix
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/options/symlink_prefix", ""),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_SYMLINK_PREFIX);
-        //main_win_pos_x
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/main_win_pos_x", 0),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_MAIN_WIN_POS_X);
-        //main_win_pos_y
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/main_win_pos_y", 25),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_MAIN_WIN_POS_Y);
-        //save_dirs_on_exit
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/save_dirs_on_exit", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_SAVE_DIRS_ON_EXIT);
-        //save_tabs_on_exit
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/save_tabs_on_exit", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_SAVE_TABS_ON_EXIT);
-        //save_dir_history_on_exit
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/save_dir_history_on_exit", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_SAVE_DIR_HISTORY_ON_EXIT);
-        //always_show_tabs
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/options/always_show_tabs", FALSE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_ALWAYS_SHOW_TABS);
-        //tab_lock_indicator
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/tab_lock_indicator", TAB_LOCK_ICON),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_TAB_LOCK_INDICATOR);
-        //main_win_state
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/options/main_win_state", (gint) GDK_WINDOW_STATE_MAXIMIZED),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_MAIN_WIN_STATE);
-        //delete
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/confirm/delete", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->confirm, GCMD_SETTINGS_CONFIRM_DELETE);
-        //delete_default
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/confirm/delete_default", 1),
-                                                        options.gcmd_settings->confirm, GCMD_SETTINGS_CONFIRM_DELETE_DEFAULT);
-        //confirm_copy_overwrite
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/confirm/copy_overwrite", GNOME_CMD_CONFIRM_OVERWRITE_QUERY),
-                                                        options.gcmd_settings->confirm, GCMD_SETTINGS_CONFIRM_COPY_OVERWRITE);
-        //confirm_move_overwrite
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/confirm/move_overwrite", GNOME_CMD_CONFIRM_OVERWRITE_QUERY),
-                                                        options.gcmd_settings->confirm, GCMD_SETTINGS_CONFIRM_MOVE_OVERWRITE);
-        //confirm_mouse_dnd
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/confirm/confirm_mouse_dnd", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->confirm, GCMD_SETTINGS_CONFIRM_MOUSE_DRAG_AND_DROP);
-        //select_dirs
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/sort/select_dirs", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_SELECT_DIRS);
-        //case_sensitive
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/sort/case_sensitive", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_CASE_SENSITIVE);
-        //mode
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/colors/mode", GNOME_CMD_COLOR_GREEN_TIGER),
-                                                        options.gcmd_settings->colors, GCMD_SETTINGS_COLORS_THEME);
-        GdkColor *color = g_new0 (GdkColor, 1);
-        //norm_fg
-        gnome_cmd_data_get_color_gnome_config ("/colors/norm_fg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_COLORS_NORM_FG);
-        //norm_bg
-        gnome_cmd_data_get_color_gnome_config ("/colors/norm_bg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_COLORS_NORM_BG);
-        //alt_fg
-        gnome_cmd_data_get_color_gnome_config ("/colors/alt_fg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_COLORS_ALT_FG);
-        //alt_bg
-        gnome_cmd_data_get_color_gnome_config ("/colors/alt_bg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_COLORS_ALT_BG);
-        //sel_fg
-        gnome_cmd_data_get_color_gnome_config ("/colors/sel_fg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_COLORS_SEL_FG);
-        //sel_bg
-        gnome_cmd_data_get_color_gnome_config ("/colors/sel_bg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_COLORS_SEL_BG);
-        //curs_fg
-        gnome_cmd_data_get_color_gnome_config ("/colors/curs_fg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_COLORS_CURS_FG);
-        //curs_bg
-        gnome_cmd_data_get_color_gnome_config ("/colors/curs_bg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_COLORS_CURS_BG);
-        //use_ls_colors
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/colors/use_ls_colors", TRUE) ? 1 : 0,
-                                              options.gcmd_settings->colors, GCMD_SETTINGS_COLORS_USE_LS_COLORS);
-        //ls_colors_black_fg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_black_fg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_BLACK_FG);
-        //ls_colors_black_bg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_black_bg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_BLACK_BG);
-        //ls_colors_red_fg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_red_fg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_RED_FG);
-        //ls_colors_red_bg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_red_bg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_RED_BG);
-        //ls_colors_green_fg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_green_fg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_GREEN_FG);
-        //ls_colors_green_bg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_green_bg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_GREEN_BG);
-        //ls_colors_yellow_fg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_yellow_fg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_YELLOW_FG);
-        //ls_colors_yellow_bg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_yellow_bg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_YELLOW_BG);
-        //ls_colors_blue_fg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_blue_fg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_BLUE_FG);
-        //ls_colors_blue_bg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_blue_bg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_BLUE_BG);
-        //ls_colors_magenta_fg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_magenta_fg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_MAGENTA_FG);
-        //ls_colors_magenta_bg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_magenta_bg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_MAGENTA_BG);
-        //ls_colors_cyan_fg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_cyan_fg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_CYAN_FG);
-        //ls_colors_cyan_bg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_cyan_bg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_CYAN_BG);
-        //ls_colors_white_fg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_white_fg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_WHITE_FG);
-        //ls_colors_white_bg
-        gnome_cmd_data_get_color_gnome_config ("/colors/ls_colors_white_bg", color);
-        migrate_data_string_value_into_gsettings(gdk_color_to_string (color),
-                                                 options.gcmd_settings->colors, GCMD_SETTINGS_LS_COLORS_WHITE_BG);
-        //honor_expect_uris
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/programs/honor_expect_uris", FALSE) ? 1 : 0,
-                                              options.gcmd_settings->programs, GCMD_SETTINGS_DONT_DOWNLOAD);
-        //allow_multiple_instances
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/programs/allow_multiple_instances", FALSE) ? 1 : 0,
-                                              options.gcmd_settings->general, GCMD_SETTINGS_MULTIPLE_INSTANCES);
-        //use_internal_viewer
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/programs/use_internal_viewer", TRUE) ? 1 : 0,
-                                              options.gcmd_settings->programs, GCMD_SETTINGS_USE_INTERNAL_VIEWER);
-        //alt_quick_search
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/programs/alt_quick_search", FALSE) ? 1 : 0,
-                                              options.gcmd_settings->general, GCMD_SETTINGS_QUICK_SEARCH_SHORTCUT);
-        //quick_search_exact_match_begin
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/programs/quick_search_exact_match_begin", TRUE) ? 1 : 0,
-                                              options.gcmd_settings->general, GCMD_SETTINGS_QUICK_SEARCH_EXACT_MATCH_BEGIN);
-        //quick_search_exact_match_end
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/programs/quick_search_exact_match_end", FALSE) ? 1 : 0,
-                                              options.gcmd_settings->general, GCMD_SETTINGS_QUICK_SEARCH_EXACT_MATCH_END);
-        //skip_mounting
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/programs/skip_mounting", FALSE) ? 1 : 0,
-                                              options.gcmd_settings->general, GCMD_SETTINGS_DEV_SKIP_MOUNTING);
-        //viewer
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/programs/viewer", "gedit %s"),
-                                                        options.gcmd_settings->programs, GCMD_SETTINGS_VIEWER_CMD);
-        //editor
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/programs/editor", "gedit %s"),
-                                                        options.gcmd_settings->programs, GCMD_SETTINGS_EDITOR_CMD);
-        //differ
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/programs/differ", "meld %s"),
-                                                        options.gcmd_settings->programs, GCMD_SETTINGS_DIFFER_CMD);
-        //sendto
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/programs/sendto", "nautilus-sendto %s"),
-                                                        options.gcmd_settings->programs, GCMD_SETTINGS_SENDTO_CMD);
-        //terminal_open
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/programs/terminal_open", "gnome-terminal"),
-                                                        options.gcmd_settings->programs, GCMD_SETTINGS_TERMINAL_CMD);
-        //terminal_exec
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/programs/terminal_exec", "gnome-terminal -e %s"),
-                                                        options.gcmd_settings->programs, GCMD_SETTINGS_TERMINAL_EXEC_CMD);
-        //use_gcmd_block
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/programs/use_gcmd_block", FALSE) ? 1 : 0,
-                                              options.gcmd_settings->programs, GCMD_SETTINGS_USE_GCMD_BLOCK);
-        //only_icon
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/devices/only_icon", FALSE) ? 1 : 0,
-                                              options.gcmd_settings->general, GCMD_SETTINGS_DEV_ONLY_ICON);
-        //mainmenu_visibility
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/programs/mainmenu_visibility", TRUE) ? 1 : 0,
-                                              options.gcmd_settings->general, GCMD_SETTINGS_MAINMENU_VISIBILITY);
-        //uri
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/quick-connect/uri", "ftp://anonymous@ftp.gnome.org/pub/GNOME/"),
-                                                        options.gcmd_settings->network, GCMD_SETTINGS_QUICK_CONNECT_URI);
-        //ftp_anonymous_password
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/network/ftp_anonymous_password", "you@provider.com"),
-                                                        options.gcmd_settings->network, GCMD_SETTINGS_FTP_ANONYMOUS_PASSWORD);
-        //auto_load0 -> migrate the string into a gsettings string array
-        if (gnome_cmd_data_get_int ("/plugins/count", 0))
-        {
-            migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/plugins/auto_load0", "libfileroller.so"),
-                                                            options.gcmd_settings->plugins, GCMD_SETTINGS_PLUGINS_AUTOLOAD);
-        }
-        //cmdline-history/lineXX -> migrate the string into a gsettings string array
-        GList *cmdline_history_for_migration = NULL;
-        cmdline_history_for_migration = load_string_history ("/cmdline-history/line%d", -1);
-        if (cmdline_history_for_migration && cmdline_history_for_migration->data)
-        {
-            GList *list_pointer;
-            list_pointer = cmdline_history_for_migration;
-            gint ii, array_size = 0;
-            for (;list_pointer; list_pointer=list_pointer->next)
-                ++array_size;
-            gchar** str_array;
-            str_array = (gchar**) g_malloc ((array_size + 1)*sizeof(char*));
-
-            list_pointer = cmdline_history_for_migration;
-            for (ii = 0; list_pointer; list_pointer=list_pointer->next, ++ii)
-            {
-                str_array[ii] = g_strdup((const gchar*) list_pointer->data);
-            }
-            str_array[ii] = NULL;
-            g_settings_set_strv(options.gcmd_settings->general, GCMD_SETTINGS_CMDLINE_HISTORY, str_array);
-
-            for (ii = 0; list_pointer; list_pointer=list_pointer->next, ++ii)
-            {
-                g_free(str_array[ii]);
-            }
-            g_free(str_array);
-            g_list_free(cmdline_history_for_migration);
-        }
-        /////////////////////// internal viewer specs ///////////////////////
-        //case_sens
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/internal_viewer/case_sens", FALSE) ? 1 : 0,
-                                              options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_CASE_SENSITIVE);
-        //last_mode
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/internal_viewer/last_mode", 0),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_SEARCH_MODE);
-        //charset
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/internal_viewer/charset", "UTF8"),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_CHARSET);
-        //fixed_font_name
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/internal_viewer/fixed_font_name", "Monospace"),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_FIXED_FONT_NAME);
-        //variable_font_name
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/internal_viewer/variable_font_name", "Sans"),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_VARIABLE_FONT_NAME);
-        //hex_offset_display
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/internal_viewer/hex_offset_display", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_DISPLAY_HEX_OFFSET);
-        //wrap_mode
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_bool ("/internal_viewer/wrap_mode", TRUE) ? 1 : 0,
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_WRAP_MODE);
-        //font_size
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/internal_viewer/font_size", 12),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_FONT_SIZE);
-        //tab_size
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/internal_viewer/tab_size", 8),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_TAB_SIZE);
-        //binary_bytes_per_line
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/internal_viewer/binary_bytes_per_line", 80),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_BINARY_BYTES_PER_LINE);
-        //x
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/internal_viewer/x", 20),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_X_OFFSET);
-        //y
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/internal_viewer/y", 20),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_Y_OFFSET);
-        //width
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/internal_viewer/width", 400),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_WINDOW_WIDTH);
-        //height
-        migrate_data_int_value_into_gsettings(gnome_cmd_data_get_int ("/internal_viewer/height", 400),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_WINDOW_HEIGHT);
-        //text_pattern0
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/internal_viewer/text_pattern0", ""),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_SEARCH_PATTERN_TEXT);
-        //hex_pattern0
-        migrate_data_string_value_into_gsettings(gnome_cmd_data_get_string ("/internal_viewer/hex_pattern0", ""),
-                                                        options.gcmd_settings->internalviewer, GCMD_SETTINGS_IV_SEARCH_PATTERN_HEX);
-        g_free(color);
-
-        fclose (fd);
-
-        // Rename config file
-        gchar* temp;
-        temp = g_strdup_printf("%s.deprecated", package_config_path);
-        if (g_rename(package_config_path, temp) != 0 )
-            g_warning("Renaming of %s to %s failed!", package_config_path, temp);
-        g_free(temp);
-    }
-    g_free(package_config_path);
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Data migration from .gnome2/gnome-commander-size, created by gnome_config
-    ////////////////////////////////////////////////////////////////////////////
-    package_config_path = g_strdup_printf("%s-size",gnome_config_get_real_path(PACKAGE));
-    fd = fopen (package_config_path, "r");
-    if (fd)
-    {
-        // main_win/width
-        migrate_data_int_value_into_gsettings(get_int ("/gnome-commander-size/main_win/width", 600),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_MAIN_WIN_WIDTH);
-        // main_win/height
-        migrate_data_int_value_into_gsettings(get_int ("/gnome-commander-size/main_win/height", 400),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_MAIN_WIN_HEIGHT);
-        // column-widths/fs_col_width0..8
-        migrate_data_int_value_into_gsettings(get_int ("/gnome-commander-size/column-widths/fs_col_width0", 16),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_COLUMN_WIDTH_ICON);
-        migrate_data_int_value_into_gsettings(get_int ("/gnome-commander-size/column-widths/fs_col_width1", 140),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_COLUMN_WIDTH_NAME);
-        migrate_data_int_value_into_gsettings(get_int ("/gnome-commander-size/column-widths/fs_col_width2", 40),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_COLUMN_WIDTH_EXT);
-        migrate_data_int_value_into_gsettings(get_int ("/gnome-commander-size/column-widths/fs_col_width3", 240),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_COLUMN_WIDTH_DIR);
-        migrate_data_int_value_into_gsettings(get_int ("/gnome-commander-size/column-widths/fs_col_width4", 70),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_COLUMN_WIDTH_SIZE);
-        migrate_data_int_value_into_gsettings(get_int ("/gnome-commander-size/column-widths/fs_col_width5", 150),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_COLUMN_WIDTH_DATE);
-        migrate_data_int_value_into_gsettings(get_int ("/gnome-commander-size/column-widths/fs_col_width6", 70),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_COLUMN_WIDTH_PERM);
-        migrate_data_int_value_into_gsettings(get_int ("/gnome-commander-size/column-widths/fs_col_width7", 50),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_COLUMN_WIDTH_OWNER);
-        migrate_data_int_value_into_gsettings(get_int ("/gnome-commander-size/column-widths/fs_col_width8", 50),
-                                                        options.gcmd_settings->general, GCMD_SETTINGS_COLUMN_WIDTH_GROUP);
-        fclose (fd);
-
-        // Rename config file
-        gchar* temp;
-        temp = g_strdup_printf("%s.deprecated", package_config_path);
-        if (g_rename(package_config_path, temp) != 0 )
-            g_warning("Renaming of %s to %s failed!", package_config_path, temp);
-        g_free(temp);
-    }
-    g_free(package_config_path);
-
-    // Activate gcmd gsettings signals
-    gcmd_connect_gsettings_signals(gnome_cmd_data.options.gcmd_settings);
 }
 
 /**
@@ -3549,14 +2796,11 @@ void GnomeCmdData::load()
     options.confirm_move_overwrite = (GnomeCmdConfirmOverwriteMode) g_settings_get_enum (options.gcmd_settings->confirm, GCMD_SETTINGS_CONFIRM_MOVE_OVERWRITE);
     options.confirm_mouse_dnd = g_settings_get_boolean (options.gcmd_settings->confirm, GCMD_SETTINGS_CONFIRM_MOUSE_DRAG_AND_DROP);
 
-    options.filter.file_types[GNOME_VFS_FILE_TYPE_UNKNOWN] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_UNKNOWN);
-    options.filter.file_types[GNOME_VFS_FILE_TYPE_REGULAR] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_REGULAR);
-    options.filter.file_types[GNOME_VFS_FILE_TYPE_DIRECTORY] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_DIRECTORY);
-    options.filter.file_types[GNOME_VFS_FILE_TYPE_FIFO] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_FIFO);
-    options.filter.file_types[GNOME_VFS_FILE_TYPE_SOCKET] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SOCKET);
-    options.filter.file_types[GNOME_VFS_FILE_TYPE_CHARACTER_DEVICE] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_CHARACTER_DEVICE);
-    options.filter.file_types[GNOME_VFS_FILE_TYPE_BLOCK_DEVICE] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_BLOCK_DEVICE);
-    options.filter.file_types[GNOME_VFS_FILE_TYPE_SYMBOLIC_LINK] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SYMBOLIC_LINK);
+    options.filter.file_types[G_FILE_TYPE_UNKNOWN] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_UNKNOWN);
+    options.filter.file_types[G_FILE_TYPE_REGULAR] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_REGULAR);
+    options.filter.file_types[G_FILE_TYPE_DIRECTORY] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_DIRECTORY);
+    options.filter.file_types[G_FILE_TYPE_SPECIAL] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SPECIAL);
+    options.filter.file_types[G_FILE_TYPE_SYMBOLIC_LINK] = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SYMBOLIC_LINK);
     options.filter.hidden = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_DOTFILE);
     options.filter.backup = g_settings_get_boolean (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_BACKUP);
 
@@ -3874,8 +3118,7 @@ void GnomeCmdData::load()
     }
 
     priv->con_list->lock();
-    if (load_devices_old ("devices") == FALSE)
-        load_devices ("devices");
+    load_devices ("devices");
 
     if (!gnome_cmd_xml_config_load (xml_cfg_path, *this))
     {
@@ -3915,7 +3158,7 @@ void GnomeCmdData::load()
     load_intviewer_defaults();
     load_auto_load_plugins();
 
-    set_vfs_volume_monitor ();
+    set_volume_mount_monitor ();
 
     set_settings_monitor (xml_cfg_path);
 
@@ -4151,14 +3394,11 @@ void GnomeCmdData::save()
     set_gsettings_enum_when_changed (options.gcmd_settings->confirm, GCMD_SETTINGS_CONFIRM_MOVE_OVERWRITE, options.confirm_move_overwrite);
     set_gsettings_when_changed      (options.gcmd_settings->confirm, GCMD_SETTINGS_CONFIRM_MOUSE_DRAG_AND_DROP, &(options.confirm_mouse_dnd));
 
-    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_UNKNOWN, &(options.filter.file_types[GNOME_VFS_FILE_TYPE_UNKNOWN]));
-    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_REGULAR, &(options.filter.file_types[GNOME_VFS_FILE_TYPE_REGULAR]));
-    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_DIRECTORY, &(options.filter.file_types[GNOME_VFS_FILE_TYPE_DIRECTORY]));
-    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_FIFO, &(options.filter.file_types[GNOME_VFS_FILE_TYPE_FIFO]));
-    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SOCKET, &(options.filter.file_types[GNOME_VFS_FILE_TYPE_SOCKET]));
-    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_CHARACTER_DEVICE, &(options.filter.file_types[GNOME_VFS_FILE_TYPE_CHARACTER_DEVICE]));
-    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_BLOCK_DEVICE, &(options.filter.file_types[GNOME_VFS_FILE_TYPE_BLOCK_DEVICE]));
-    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SYMBOLIC_LINK, &(options.filter.file_types[GNOME_VFS_FILE_TYPE_SYMBOLIC_LINK]));
+    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_UNKNOWN, &(options.filter.file_types[G_FILE_TYPE_UNKNOWN]));
+    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_REGULAR, &(options.filter.file_types[G_FILE_TYPE_REGULAR]));
+    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_DIRECTORY, &(options.filter.file_types[G_FILE_TYPE_DIRECTORY]));
+    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SPECIAL, &(options.filter.file_types[G_FILE_TYPE_SPECIAL]));
+    set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_HIDE_SYMBOLIC_LINK, &(options.filter.file_types[G_FILE_TYPE_SYMBOLIC_LINK]));
     set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_DOTFILE, &(options.filter.hidden));
     set_gsettings_when_changed      (options.gcmd_settings->filter, GCMD_SETTINGS_FILTER_BACKUP, &(options.filter.backup));
 

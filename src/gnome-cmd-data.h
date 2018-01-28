@@ -118,10 +118,7 @@ GcmdSettings *gcmd_settings_new (void);
 #define GCMD_SETTINGS_FILTER_HIDE_UNKNOWN             "hide-unknown"
 #define GCMD_SETTINGS_FILTER_HIDE_REGULAR             "hide-regular"
 #define GCMD_SETTINGS_FILTER_HIDE_DIRECTORY           "hide-directory"
-#define GCMD_SETTINGS_FILTER_HIDE_FIFO                "hide-fifo"
-#define GCMD_SETTINGS_FILTER_HIDE_SOCKET              "hide-socket"
-#define GCMD_SETTINGS_FILTER_HIDE_CHARACTER_DEVICE    "hide-char-device"
-#define GCMD_SETTINGS_FILTER_HIDE_BLOCK_DEVICE        "hide-block-device"
+#define GCMD_SETTINGS_FILTER_HIDE_SPECIAL             "hide-special"
 #define GCMD_SETTINGS_FILTER_HIDE_SYMBOLIC_LINK       "hide-symbolic-link"
 #define GCMD_SETTINGS_FILTER_DOTFILE                  "hide-dotfile"
 #define GCMD_SETTINGS_FILTER_BACKUP                   "hide-backup-files"
@@ -653,7 +650,6 @@ struct GnomeCmdData
 
     void load();
     void gsettings_init();
-    void migrate_all_data_to_gsettings();
     gint migrate_data_int_value_into_gsettings(gint user_value, GSettings *settings, const char *key);
     gboolean migrate_data_string_value_into_gsettings(const char* user_value, GSettings *settings, const char *key);
     void load_more();

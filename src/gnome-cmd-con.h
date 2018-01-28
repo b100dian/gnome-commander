@@ -90,7 +90,7 @@ struct GnomeCmdCon
 
     gchar               *open_msg;
     GnomeCmdPath        *base_path;
-    GnomeVFSFileInfo    *base_info;
+    GFileInfo           *base_info;
     GString             *root_path;             // root path of the connection, used for calculation of relative paths
     gboolean            should_remember_dir;
     gboolean            needs_open_visprog;
@@ -110,7 +110,7 @@ struct GnomeCmdCon
     GnomeCmdPixmap      *close_pixmap;
 
     OpenResult          open_result;
-    GnomeVFSResult      open_failed_reason;
+    GFileError          open_failed_reason;
     gchar               *open_failed_msg;
 
     GnomeCmdConPrivate  *priv;
@@ -125,14 +125,14 @@ struct GnomeCmdConClass
     /* signals */
     void (* updated) (GnomeCmdCon *con);
     void (* open_done) (GnomeCmdCon *con);
-    void (* open_failed) (GnomeCmdCon *con, const gchar *msg, GnomeVFSResult result);
+    void (* open_failed) (GnomeCmdCon *con, const gchar *msg, GFileError result);
 
     /* virtual functions */
     void (* open) (GnomeCmdCon *con);
     void (* cancel_open) (GnomeCmdCon *con);
     gboolean (* close) (GnomeCmdCon *con);
     gboolean (* open_is_needed) (GnomeCmdCon *con);
-    GnomeVFSURI *(* create_uri) (GnomeCmdCon *con, GnomeCmdPath *path);
+    char *(* create_uri) (GnomeCmdCon *con, GnomeCmdPath *path);
     GnomeCmdPath *(* create_path) (GnomeCmdCon *con, const gchar *path_str);
 };
 
@@ -179,7 +179,7 @@ inline void gnome_cmd_con_set_uri (GnomeCmdCon *con, const std::string &uri)
     con->uri = uri.empty() ? NULL : g_strdup (uri.c_str());
 }
 
-GnomeVFSURI *gnome_cmd_con_create_uri (GnomeCmdCon *con, GnomeCmdPath *path);
+char *gnome_cmd_con_create_uri (GnomeCmdCon *con, GnomeCmdPath *path);
 
 GnomeCmdPath *gnome_cmd_con_create_path (GnomeCmdCon *con, const gchar *path_str);
 
@@ -339,9 +339,9 @@ void gnome_cmd_con_erase_bookmark (GnomeCmdCon *con);
 
 void gnome_cmd_con_updated (GnomeCmdCon *con);
 
-GnomeVFSResult gnome_cmd_con_get_path_target_type (GnomeCmdCon *con, const gchar *path, GnomeVFSFileType *type);
+GFileError gnome_cmd_con_get_path_target_type (GnomeCmdCon *con, const gchar *path, GFileType *type);
 
-GnomeVFSResult gnome_cmd_con_mkdir (GnomeCmdCon *con, const gchar *path_str);
+GFileError gnome_cmd_con_mkdir (GnomeCmdCon *con, const gchar *path_str);
 
 void gnome_cmd_con_add_to_cache (GnomeCmdCon *con, GnomeCmdDir *dir);
 
@@ -381,12 +381,12 @@ inline gchar *gnome_cmd_con_get_free_space (GnomeCmdCon *con, GnomeCmdDir *dir, 
     return retval;
 }
 
-inline ConnectionMethodID gnome_cmd_con_get_scheme (GnomeVFSURI *uri)
+inline ConnectionMethodID gnome_cmd_con_get_scheme (char *uri)
 {
-    const gchar *scheme = gnome_vfs_uri_get_scheme (uri);       // do not g_free
-    const gchar *user = gnome_vfs_uri_get_user_name (uri);      // do not g_free
+    const gchar *scheme = g_uri_parse_scheme (uri);       // do not g_free
+    const gchar *user = NULL; // TODO Vlad      // do not g_free
 
-    return gnome_vfs_uri_is_local (uri) ? CON_LOCAL :
+    return g_str_equal (scheme, "file") ? CON_LOCAL :
            g_str_equal (scheme, "ftp")  ? (user && g_str_equal (user, "anonymous") ? CON_ANON_FTP : CON_FTP) :
            g_str_equal (scheme, "sftp") ? CON_SSH :
            g_str_equal (scheme, "dav")  ? CON_DAV :
@@ -401,7 +401,7 @@ std::string &__gnome_cmd_con_make_uri (std::string &s, const gchar *method, gboo
 
 inline std::string &gnome_cmd_con_make_custom_uri (std::string &s, const std::string &uri)
 {
-    stringify (s, gnome_vfs_make_uri_from_input (uri.c_str()));
+    stringify (s, uri.c_str()); // TODO Vlad: was gnome_vfs_make_uri_from_input
 
     if (!uri_is_valid (s))
         s.erase();

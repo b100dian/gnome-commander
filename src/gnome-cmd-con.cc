@@ -70,7 +70,7 @@ static void on_open_done (GnomeCmdCon *con)
 }
 
 
-static void on_open_failed (GnomeCmdCon *con, const gchar *msg, GnomeVFSResult result)
+static void on_open_failed (GnomeCmdCon *con, const gchar *msg, GFileError result)
 {
     // gnome_cmd_con_updated (con);
 }
@@ -195,7 +195,7 @@ static void init (GnomeCmdCon *con)
 
     con->state = GnomeCmdCon::STATE_CLOSED;
     con->open_result = GnomeCmdCon::OPEN_NOT_STARTED;
-    con->open_failed_reason = GNOME_VFS_OK;
+    con->open_failed_reason = G_FILE_ERROR_NXIO; // TODO Vlad was OK
     con->open_failed_msg = NULL;
 
     con->priv = g_new0 (GnomeCmdConPrivate, 1);
@@ -323,7 +323,7 @@ gboolean gnome_cmd_con_close (GnomeCmdCon *con)
 }
 
 
-GnomeVFSURI *gnome_cmd_con_create_uri (GnomeCmdCon *con, GnomeCmdPath *path)
+char *gnome_cmd_con_create_uri (GnomeCmdCon *con, GnomeCmdPath *path)
 {
     g_return_val_if_fail (GNOME_CMD_IS_CON (con), NULL);
 
@@ -426,16 +426,15 @@ void gnome_cmd_con_updated (GnomeCmdCon *con)
 
 
 // Get the type of the file at the specified path.
-// If the operation succeeds GNOME_VFS_OK is returned and type is set
-GnomeVFSResult gnome_cmd_con_get_path_target_type (GnomeCmdCon *con, const gchar *path_str, GnomeVFSFileType *type)
+bool gnome_cmd_con_get_path_target_type (GnomeCmdCon *con, const gchar *path_str, GFileType* type, GError **error)
 {
-    g_return_val_if_fail (GNOME_CMD_IS_CON (con), GNOME_VFS_ERROR_BAD_PARAMETERS);
-    g_return_val_if_fail (path_str != NULL, GNOME_VFS_ERROR_BAD_PARAMETERS);
+    g_return_val_if_fail (GNOME_CMD_IS_CON (con), false);
+    g_return_val_if_fail (path_str != NULL, false);
 
     GnomeCmdPath *path = gnome_cmd_con_create_path (con, path_str);
-    GnomeVFSURI *uri = gnome_cmd_con_create_uri (con, path);
-    GnomeVFSFileInfo *info = gnome_vfs_file_info_new ();
-    GnomeVFSResult res = gnome_vfs_get_file_info_uri (uri, info, GNOME_VFS_FILE_INFO_DEFAULT);
+    GFile *uri = gnome_cmd_con_create_uri (con, path);
+
+    *type = g_file_query_file_type (uri, G_FILE_QUERY_INFO_NONE, NULL);
 
     if (res == GNOME_VFS_OK && info->type == GNOME_VFS_FILE_TYPE_SYMBOLIC_LINK)         // resolve the symlink to get the real type of it
         res = gnome_vfs_get_file_info_uri (uri, info, GNOME_VFS_FILE_INFO_FOLLOW_LINKS);
